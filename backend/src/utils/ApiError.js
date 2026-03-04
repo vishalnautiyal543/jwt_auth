@@ -4,7 +4,7 @@ class ApiError extends Error{
         this.statusCode = statusCode
         this.message = message
         this.data = null
-        this.success = flase
+        this.success = false
         this.errors = [];
 
         Error.captureStackTrace(this, this.constructor);

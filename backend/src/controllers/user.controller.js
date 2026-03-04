@@ -2,6 +2,7 @@ import { User } from "../models/user.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import jwt from "jsonwebtoken";
 
 //register
 const register = asyncHandler(async (req, res) => {
@@ -11,6 +12,12 @@ const register = asyncHandler(async (req, res) => {
 
   if (!name || !email || !password) {
     throw new ApiError(401, "all fields are required");
+  }
+
+  const existingUser = await User.findOne({email});
+
+  if (existingUser) {
+    throw new ApiError(401, "user already registered")
   }
 
   const user = await User.create({
@@ -86,4 +93,40 @@ const getUsers = asyncHandler(async (req, res) => {
   });
 });
 
-export { register, getUsers, login };
+//refresh Token
+const refreshToken = asyncHandler(async (req, res) => {
+  const token = req.cookies.refreshToken;
+  if (!token) return res.sendStatus(401);
+
+  try {
+    const decodedToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    const user = await User.findById(decodedToken._id).select("-password");
+    if (!user) return res.sendStatus(401);
+
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    const options = {
+      httpOnly: true,
+      secure: true,
+    };
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", refreshToken, options)
+      .json(
+        new ApiResponse(200, "Tokens refreshed successfully", {
+          accessToken,
+          refreshToken,
+        }),
+      );
+  } catch (error) {
+    throw new ApiError(401, "Invalid refresh token");
+  }
+});
+
+export { register, getUsers, login, refreshToken };
